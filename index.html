@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BOM Status Report Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        input[type="file"] {
+            margin: 20px 0;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .secondary-btn {
+            background-color: #28a745;
+        }
+        .secondary-btn:hover {
+            background-color: #218838;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            text-align: center;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>BOM Status Report Generator</h1>
+    
+    <div class="upload-area">
+        <p>Upload Excel (.xlsx, .xls) or CSV files</p>
+        <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv">
+        <p id="fileCount"></p>
+    </div>
+    
+    <div class="button-group">
+        <button id="generateBtn" onclick="generateSummaryReport()">Generate Summary Report</button>
+        <button id="errorBtn" class="secondary-btn" onclick="generateErrorReport()">Generate Error Analytics</button>
+    </div>
+    
+    <div id="status" class="status"></div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const fileCount = document.getElementById('fileCount');
+        const statusDiv = document.getElementById('status');
+        const generateBtn = document.getElementById('generateBtn');
+        const errorBtn = document.getElementById('errorBtn');
+
+        let cachedFileData = [];
+
+        fileInput.addEventListener('change', function() {
+            const count = this.files.length;
+            if (count > 0) {
+                fileCount.textContent = `${count} file(s) selected`;
+                cachedFileData = [];
+            } else {
+                fileCount.textContent = '';
+            }
+        });
+
+        async function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                const fileName = file.name.toLowerCase();
+
+                if (fileName.endsWith('.csv')) {
+                    reader.onload = (e) => {
+                        Papa.parse(e.target.result, {
+                            header: true,
+                            skipEmptyLines: true,
+                            complete: (results) => {
+                                resolve({ data: results.data, filename: file.name });
+                            },
+                            error: (error) => reject(error)
+                        });
+                    };
+                    reader.readAsText(file);
+                } else {
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                            const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                            resolve({ data: jsonData, filename: file.name });
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                }
+
+                reader.onerror = () => reject(reader.error);
+            });
+        }
+
+        async function loadAllFiles() {
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                statusDiv.innerHTML = '<p class="error">Please select at least one file</p>';
+                return null;
+            }
+
+            if (cachedFileData.length > 0) {
+                return cachedFileData;
+            }
+
+            statusDiv.innerHTML = '<p>Loading files...</p>';
+
+            const allData = [];
+            for (let file of files) {
+                try {
+                    const { data, filename } = await readFile(file);
+                    const cleanData = data.map(row => {
+                        const cleanRow = {};
+                        for (let key in row) {
+                            cleanRow[key.trim()] = row[key];
+                        }
+                        return cleanRow;
+                    });
+                    allData.push({ data: cleanData, filename });
+                } catch (error) {
+                    console.error(`Error reading ${file.name}:`, error);
+                }
+            }
+
+            cachedFileData = allData;
+            return allData;
+        }
+
+        function processSummaryData(cleanData, filename) {
+            let facilityName = filename.replace(/\.(xlsx|xls|csv)$/i, '');
+            if (facilityName.endsWith('_SR')) {
+                facilityName = facilityName.slice(0, -3);
+            }
+
+            const totalResidentCount = cleanData.filter(row => row['Name'] != null && row['Name'] !== '').length;
+
+            const pnmNotFoundCount = cleanData.filter(row => 
+                row['PNM Validation'] === 'Not found in PNM'
+            ).length;
+
+            const pccSuccessCount = cleanData.filter(row => 
+                row['PCC Upload Status'] === 'Success'
+            ).length;
+
+            let businessExceptionCount = 0;
+            const businessErrors = cleanData.filter(row => {
+                if (row['Bot Status'] === 'Failed' && row['Error Reason']) {
+                    const errorReason = String(row['Error Reason']);
+                    return errorReason.includes("The provided text value can't be converted into a valid datetime.SF_ExtractPNMTables") ||
+                           errorReason.includes("Argument 'FromDate' must be 'Datetime'.SF_ExtractPNMTables");
+                }
+                return false;
+            });
+            businessExceptionCount = businessErrors.length;
+
+            const totalFailed = cleanData.filter(row => row['Bot Status'] === 'Failed').length;
+            const systemExceptionCount = totalFailed - businessExceptionCount;
+
+            return {
+                'Facility Name': facilityName,
+                'Total Processed Resident': totalResidentCount,
+                'Total PCC Upload Success Count': pccSuccessCount,
+                'Total PNM Not Found Count': pnmNotFoundCount,
+                'Business Exception Count': businessExceptionCount,
+                'System Exception Count': systemExceptionCount
+            };
+        }
+
+        async function generateSummaryReport() {
+            generateBtn.disabled = true;
+            errorBtn.disabled = true;
+
+            try {
+                const allData = await loadAllFiles();
+                if (!allData) {
+                    generateBtn.disabled = false;
+                    errorBtn.disabled = false;
+                    return;
+                }
+
+                statusDiv.innerHTML = '<p>Processing summary report...</p>';
+
+                const summaryData = [];
+                for (let { data, filename } of allData) {
+                    const summary = processSummaryData(data, filename);
+                    summaryData.push(summary);
+                }
+
+                if (summaryData.length === 0) {
+                    statusDiv.innerHTML = '<p class="error">No valid files processed</p>';
+                    generateBtn.disabled = false;
+                    errorBtn.disabled = false;
+                    return;
+                }
+
+                const totalResidents = summaryData.reduce((sum, row) => sum + row['Total Processed Resident'], 0);
+                const totalPccSuccess = summaryData.reduce((sum, row) => sum + row['Total PCC Upload Success Count'], 0);
+                const totalPnmNotFound = summaryData.reduce((sum, row) => sum + row['Total PNM Not Found Count'], 0);
+                const totalBusinessExceptions = summaryData.reduce((sum, row) => sum + row['Business Exception Count'], 0);
+                const totalSystemExceptions = summaryData.reduce((sum, row) => sum + row['System Exception Count'], 0);
+
+                const pccSuccessPct = totalResidents > 0 ? (totalPccSuccess / totalResidents * 100).toFixed(1) : 0;
+                const pnmNotFoundPct = totalResidents > 0 ? (totalPnmNotFound / totalResidents * 100).toFixed(1) : 0;
+                const businessExceptionsPct = totalResidents > 0 ? (totalBusinessExceptions / totalResidents * 100).toFixed(1) : 0;
+                const systemExceptionsPct = totalResidents > 0 ? (totalSystemExceptions / totalResidents * 100).toFixed(1) : 0;
+
+                const ws = XLSX.utils.json_to_sheet(summaryData);
+
+                const lastRow = summaryData.length + 1;
+                XLSX.utils.sheet_add_aoa(ws, [
+                    [],
+                    [],
+                    ['TOTALS', totalResidents, totalPccSuccess, totalPnmNotFound, totalBusinessExceptions, totalSystemExceptions],
+                    ['', '100%', `${pccSuccessPct}%`, `${pnmNotFoundPct}%`, `${businessExceptionsPct}%`, `${systemExceptionsPct}%`]
+                ], { origin: `A${lastRow + 1}` });
+
+                ws['!cols'] = [
+                    { wch: 30 },
+                    { wch: 25 },
+                    { wch: 30 },
+                    { wch: 28 },
+                    { wch: 25 },
+                    { wch: 25 }
+                ];
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+
+                const timestamp = getTimestamp();
+                const filename = `${timestamp}_BOM_Status_Report.xlsx`;
+
+                XLSX.writeFile(wb, filename);
+
+                statusDiv.innerHTML = '<p class="success">Summary report downloaded successfully!</p>';
+
+            } catch (error) {
+                statusDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                console.error(error);
+            } finally {
+                generateBtn.disabled = false;
+                errorBtn.disabled = false;
+            }
+        }
+
+        async function generateErrorReport() {
+            generateBtn.disabled = true;
+            errorBtn.disabled = true;
+
+            try {
+                const allData = await loadAllFiles();
+                if (!allData) {
+                    generateBtn.disabled = false;
+                    errorBtn.disabled = false;
+                    return;
+                }
+
+                statusDiv.innerHTML = '<p>Processing error analytics...</p>';
+
+                const errorData = [];
+                let filesProcessed = 0;
+                let filesWithErrors = 0;
+
+                for (let { data, filename } of allData) {
+                    filesProcessed++;
+                    
+                    const errorReasons = data
+                        .filter(row => row['Error Reason'] && 
+                                      String(row['Error Reason']).trim() !== '' && 
+                                      String(row['Error Reason']) !== 'nan')
+                        .map(row => String(row['Error Reason']));
+
+                    if (errorReasons.length > 0) {
+                        filesWithErrors++;
+                        const errorCounts = {};
+                        errorReasons.forEach(err => {
+                            errorCounts[err] = (errorCounts[err] || 0) + 1;
+                        });
+
+                        for (let [errorMsg, count] of Object.entries(errorCounts)) {
+                            errorData.push({
+                                File: filename,
+                                'Error Message': errorMsg,
+                                Count: count
+                            });
+                        }
+                    }
+                }
+
+                if (errorData.length === 0) {
+                    statusDiv.innerHTML = '<p class="error">No errors found in the uploaded files</p>';
+                    generateBtn.disabled = false;
+                    errorBtn.disabled = false;
+                    return;
+                }
+
+                // Calculate unique errors and total counts
+                const uniqueErrors = {};
+                errorData.forEach(item => {
+                    uniqueErrors[item['Error Message']] = (uniqueErrors[item['Error Message']] || 0) + item.Count;
+                });
+
+                const sortedUniqueErrors = Object.entries(uniqueErrors).sort((a, b) => b[1] - a[1]);
+                const totalErrors = errorData.reduce((sum, item) => sum + item.Count, 0);
+
+                // Build report text
+                let report = [];
+                report.push('='.repeat(100));
+                report.push('OVERVIEW - ERROR REASON SUMMARY');
+                report.push('='.repeat(100));
+                report.push(`Number of reports processed: ${filesProcessed}`);
+                report.push(`Number of reports with errors: ${filesWithErrors}`);
+                report.push(`Total unique error types: ${sortedUniqueErrors.length}`);
+                report.push(`Total error occurrences: ${totalErrors}`);
+                report.push('');
+                report.push('UNIQUE ERRORS AND FREQUENCIES:');
+                report.push('-'.repeat(100));
+                report.push(`${'Error Reason'.padEnd(80)}${'Total Count'.padStart(15)}`);
+                report.push('-'.repeat(100));
+
+                sortedUniqueErrors.forEach(([errorMsg, count]) => {
+                    report.push(`${errorMsg.padEnd(80)}${String(count).padStart(15)}`);
+                });
+
+                report.push('='.repeat(100));
+                report.push('');
+                report.push('');
+                report.push('='.repeat(100));
+                report.push('ERROR REASON FREQUENCY REPORT BY FILE');
+                report.push('='.repeat(100));
+
+                // Sort by file, then by count descending
+                const sortedErrorData = errorData.sort((a, b) => {
+                    if (a.File !== b.File) return a.File.localeCompare(b.File);
+                    return b.Count - a.Count;
+                });
+
+                let currentFile = null;
+                sortedErrorData.forEach(item => {
+                    if (currentFile !== item.File) {
+                        if (currentFile !== null) report.push('');
+                        currentFile = item.File;
+                        report.push('');
+                        report.push(`FILE: ${currentFile}`);
+                        report.push('-'.repeat(100));
+                        report.push(`${'Error Reason'.padEnd(80)}${'Count'.padStart(10)}`);
+                        report.push('-'.repeat(100));
+                    }
+                    report.push(`${item['Error Message'].padEnd(80)}${String(item.Count).padStart(10)}`);
+                });
+
+                report.push('');
+                report.push('='.repeat(100));
+
+                // Download as text file
+                const reportText = report.join('\n');
+                const blob = new Blob([reportText], { type: 'text/plain' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'bom_error_reasons_output.txt';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                statusDiv.innerHTML = '<p class="success">Error analytics report downloaded successfully!</p>';
+
+            } catch (error) {
+                statusDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                console.error(error);
+            } finally {
+                generateBtn.disabled = false;
+                errorBtn.disabled = false;
+            }
+        }
+
+        function getTimestamp() {
+            const now = new Date();
+            return now.getFullYear() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0') + '_' +
+                String(now.getHours()).padStart(2, '0') +
+                String(now.getMinutes()).padStart(2, '0') +
+                String(now.getSeconds()).padStart(2, '0');
+        }
+    </script>
+</body>
+</html>
