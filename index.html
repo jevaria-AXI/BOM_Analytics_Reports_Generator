@@ -184,7 +184,7 @@
             ).length;
 
             const pccSuccessCount = cleanData.filter(row => 
-                row['PCC Upload Status'] === 'Success'
+                row['PCC Upload Status'] === 'Success' || row['PNM Validation'] === 'Not found in PNM'
             ).length;
 
             let businessExceptionCount = 0;
