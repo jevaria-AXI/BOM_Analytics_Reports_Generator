@@ -253,18 +253,32 @@
                 const businessExceptionsPct = totalResidents > 0 ? (totalBusinessExceptions / totalResidents * 100).toFixed(1) : 0;
                 const systemExceptionsPct = totalResidents > 0 ? (totalSystemExceptions / totalResidents * 100).toFixed(1) : 0;
 
-                // Ensure column order by specifying headers explicitly
-                const ws = XLSX.utils.json_to_sheet(summaryData, {
-                    header: [
-                        'Facility Name',
-                        'Total Processed Resident',
-                        'Total Success Count',
-                        'Total PCC Upload Success Count',
-                        'Total PNM Not Found Count',
-                        'Business Exception Count',
-                        'System Exception Count'
-                    ]
+                // Create worksheet with explicit column order
+                const headers = [
+                    'Facility Name',
+                    'Total Processed Resident',
+                    'Total Success Count',
+                    'Total PCC Upload Success Count',
+                    'Total PNM Not Found Count',
+                    'Business Exception Count',
+                    'System Exception Count'
+                ];
+                
+                // Convert data to array format for better control
+                const wsData = [headers];
+                summaryData.forEach(row => {
+                    wsData.push([
+                        row['Facility Name'],
+                        row['Total Processed Resident'],
+                        row['Total Success Count'],
+                        row['Total PCC Upload Success Count'],
+                        row['Total PNM Not Found Count'],
+                        row['Business Exception Count'],
+                        row['System Exception Count']
+                    ]);
                 });
+                
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
 
                 const lastRow = summaryData.length + 1;
                 XLSX.utils.sheet_add_aoa(ws, [
