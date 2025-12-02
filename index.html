@@ -179,13 +179,14 @@
 
             const totalResidentCount = cleanData.filter(row => row['Name'] != null && row['Name'] !== '').length;
 
+            const totalSuccessCount = pccSuccessCount + pnmNotFoundCount;
+
             const pnmNotFoundCount = cleanData.filter(row => 
                 row['PNM Validation'] === 'Not found in PNM'
             ).length;
 
             const pccSuccessCount = cleanData.filter(row => 
-                row['PCC Upload Status'] === 'Success' || 
-                (row['PNM Validation'] === 'Not found in PNM' && row['PCC Upload Status'] !== 'Success')
+                row['PCC Upload Status'] === 'Success'
             ).length;
 
             let businessExceptionCount = 0;
@@ -205,6 +206,7 @@
             return {
                 'Facility Name': facilityName,
                 'Total Processed Resident': totalResidentCount,
+                'Total Success Count': totalSuccessCount,  // ← Added here
                 'Total PCC Upload Success Count': pccSuccessCount,
                 'Total PNM Not Found Count': pnmNotFoundCount,
                 'Business Exception Count': businessExceptionCount,
