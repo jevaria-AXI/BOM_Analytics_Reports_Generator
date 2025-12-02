@@ -253,7 +253,18 @@
                 const businessExceptionsPct = totalResidents > 0 ? (totalBusinessExceptions / totalResidents * 100).toFixed(1) : 0;
                 const systemExceptionsPct = totalResidents > 0 ? (totalSystemExceptions / totalResidents * 100).toFixed(1) : 0;
 
-                const ws = XLSX.utils.json_to_sheet(summaryData);
+                // Ensure column order by specifying headers explicitly
+                const ws = XLSX.utils.json_to_sheet(summaryData, {
+                    header: [
+                        'Facility Name',
+                        'Total Processed Resident',
+                        'Total Success Count',
+                        'Total PCC Upload Success Count',
+                        'Total PNM Not Found Count',
+                        'Business Exception Count',
+                        'System Exception Count'
+                    ]
+                });
 
                 const lastRow = summaryData.length + 1;
                 XLSX.utils.sheet_add_aoa(ws, [
