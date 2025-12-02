@@ -179,7 +179,6 @@
 
             const totalResidentCount = cleanData.filter(row => row['Name'] != null && row['Name'] !== '').length;
 
-            const totalSuccessCount = pccSuccessCount + pnmNotFoundCount;
 
             const pnmNotFoundCount = cleanData.filter(row => 
                 row['PNM Validation'] === 'Not found in PNM'
@@ -202,6 +201,7 @@
 
             const totalFailed = cleanData.filter(row => row['Bot Status'] === 'Failed').length;
             const systemExceptionCount = totalFailed - businessExceptionCount;
+            const totalSuccessCount = pccSuccessCount + pnmNotFoundCount;
 
             return {
                 'Facility Name': facilityName,
