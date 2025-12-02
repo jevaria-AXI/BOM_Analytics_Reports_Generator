@@ -179,7 +179,6 @@
 
             const totalResidentCount = cleanData.filter(row => row['Name'] != null && row['Name'] !== '').length;
 
-
             const pnmNotFoundCount = cleanData.filter(row => 
                 row['PNM Validation'] === 'Not found in PNM'
             ).length;
@@ -206,7 +205,7 @@
             return {
                 'Facility Name': facilityName,
                 'Total Processed Resident': totalResidentCount,
-                'Total Success Count': totalSuccessCount,  // ← Added here
+                'Total Success Count': totalSuccessCount,
                 'Total PCC Upload Success Count': pccSuccessCount,
                 'Total PNM Not Found Count': pnmNotFoundCount,
                 'Business Exception Count': businessExceptionCount,
@@ -242,11 +241,13 @@
                 }
 
                 const totalResidents = summaryData.reduce((sum, row) => sum + row['Total Processed Resident'], 0);
+                const totalSuccess = summaryData.reduce((sum, row) => sum + row['Total Success Count'], 0);
                 const totalPccSuccess = summaryData.reduce((sum, row) => sum + row['Total PCC Upload Success Count'], 0);
                 const totalPnmNotFound = summaryData.reduce((sum, row) => sum + row['Total PNM Not Found Count'], 0);
                 const totalBusinessExceptions = summaryData.reduce((sum, row) => sum + row['Business Exception Count'], 0);
                 const totalSystemExceptions = summaryData.reduce((sum, row) => sum + row['System Exception Count'], 0);
 
+                const totalSuccessPct = totalResidents > 0 ? (totalSuccess / totalResidents * 100).toFixed(1) : 0;
                 const pccSuccessPct = totalResidents > 0 ? (totalPccSuccess / totalResidents * 100).toFixed(1) : 0;
                 const pnmNotFoundPct = totalResidents > 0 ? (totalPnmNotFound / totalResidents * 100).toFixed(1) : 0;
                 const businessExceptionsPct = totalResidents > 0 ? (totalBusinessExceptions / totalResidents * 100).toFixed(1) : 0;
@@ -258,13 +259,14 @@
                 XLSX.utils.sheet_add_aoa(ws, [
                     [],
                     [],
-                    ['TOTALS', totalResidents, totalPccSuccess, totalPnmNotFound, totalBusinessExceptions, totalSystemExceptions],
-                    ['', '100%', `${pccSuccessPct}%`, `${pnmNotFoundPct}%`, `${businessExceptionsPct}%`, `${systemExceptionsPct}%`]
+                    ['TOTALS', totalResidents, totalSuccess, totalPccSuccess, totalPnmNotFound, totalBusinessExceptions, totalSystemExceptions],
+                    ['', '100%', `${totalSuccessPct}%`, `${pccSuccessPct}%`, `${pnmNotFoundPct}%`, `${businessExceptionsPct}%`, `${systemExceptionsPct}%`]
                 ], { origin: `A${lastRow + 1}` });
 
                 ws['!cols'] = [
                     { wch: 30 },
                     { wch: 25 },
+                    { wch: 20 },
                     { wch: 30 },
                     { wch: 28 },
                     { wch: 25 },
